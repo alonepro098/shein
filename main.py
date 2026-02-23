@@ -21,12 +21,12 @@ from telegram.ext import (
 # ========================
 # CONFIG
 # ========================
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+BOT_TOKEN = "8061483201:AAExBhXJhj2LEmAWwG_kJAaiX8a38v4P_VU"
 
 OWNER_ID = 5311223486
 
-CHANNEL_1 = "@jsks"          # FrozenTools
-CHANNEL_2 = "@channel_two"  # Giveaway (REPLACE)
+CHANNEL_1 = "@tmm_bots"          # FrozenTools
+CHANNEL_2 = "@tmm_bots"  # Giveaway (REPLACE)
 
 # ========================
 # DATABASE
