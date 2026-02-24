@@ -174,7 +174,11 @@ async def joined_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # PROFILE
 # ========================
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    u = get_user(update.effective_user.id)
+    user = update.effective_user
+    add_user(user.id, user.username or "None")  # 👈 SAFETY LINE
+
+    u = get_user(user.id)
+
     await update.message.reply_text(
         f"👤 Profile Details\n\n"
         f"ID: {u[0]}\n"
@@ -219,9 +223,14 @@ async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # BALANCE
 # ========================
 async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    u = get_user(update.effective_user.id)
+    user = update.effective_user
+    add_user(user.id, user.username or "None")  # 👈 SAFETY LINE
+
+    u = get_user(user.id)
+
     await update.message.reply_text(
-        f"💳 Your Wallet\n\nPoints balance: {u[2]}\n\n"
+        f"💳 Your Wallet\n\n"
+        f"Points balance: {u[2]}\n\n"
         "• 2 Pts → ₹500\n"
         "• 5 Pts → ₹1000\n"
         "• 10 Pts → ₹2000"
