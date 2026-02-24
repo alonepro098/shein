@@ -21,12 +21,12 @@ from telegram.ext import (
 # ========================
 # CONFIG
 # ========================
-BOT_TOKEN = "8061483201:AAExBhXJhj2LEmAWwG_kJAaiX8a38v4P_VU"
+BOT_TOKEN = "YOUR_NEW_TOKEN_HERE"
 
 OWNER_ID = 5311223486
 
-CHANNEL_1 = "@tmm_bots"          # FrozenTools
-CHANNEL_2 = "@tmm_bots"  # Giveaway (REPLACE)
+CHANNEL_1 = "@tmm_bots"
+CHANNEL_2 = "@tmm_bots"
 
 # ========================
 # DATABASE
@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT,
     points INTEGER DEFAULT 0,
     referrals INTEGER DEFAULT 0,
-    join_date TEXT
+    join_date TEXT,
+    referred_by INTEGER
 )
 """)
 conn.commit()
@@ -55,7 +56,9 @@ def get_user(user_id):
 def add_user(user_id, username):
     join_date = datetime.now().strftime("%Y-%m-%d")
     cur.execute(
-        "INSERT OR IGNORE INTO users VALUES (?, ?, 0, 0, ?)",
+        """INSERT OR IGNORE INTO users
+        (user_id, username, points, referrals, join_date, referred_by)
+        VALUES (?, ?, 0, 0, ?, NULL)""",
         (user_id, username, join_date)
     )
     conn.commit()
@@ -72,14 +75,57 @@ async def check_join(update, context, channel):
         return False
 
 # ========================
-# /START
+# /START + REFERRAL + NOTIFICATIONS
 # ========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    is_new = get_user(user.id) is None
+    user_id = user.id
+    username = user.username or "None"
 
-    add_user(user.id, user.username or "None")
+    existing_user = get_user(user_id)
+    is_new = existing_user is None
 
+    add_user(user_id, username)
+
+    # ---------- REFERRAL LOGIC ----------
+    if is_new and context.args:
+        try:
+            referrer_id = int(context.args[0])
+
+            if referrer_id != user_id:
+                cur.execute("SELECT referred_by FROM users WHERE user_id=?", (user_id,))
+                already = cur.fetchone()[0]
+
+                if already is None:
+                    # Save referral
+                    cur.execute(
+                        "UPDATE users SET referred_by=? WHERE user_id=?",
+                        (referrer_id, user_id)
+                    )
+                    cur.execute(
+                        "UPDATE users SET points = points + 1, referrals = referrals + 1 WHERE user_id=?",
+                        (referrer_id,)
+                    )
+                    conn.commit()
+
+                    # Notify referrer
+                    await context.bot.send_message(
+                        chat_id=referrer_id,
+                        text=
+                        "🎉 New Referral Joined!\n\n"
+                        f"User ID: {user_id}\n"
+                        "You earned +1 point."
+                    )
+
+                    # Notify new user
+                    await update.message.reply_text(
+                        "✅ Referral Applied!\n\n"
+                        f"You were referred by User ID: {referrer_id}"
+                    )
+        except:
+            pass
+
+    # ---------- OWNER NOTIFICATION ----------
     if is_new:
         await context.bot.send_message(
             chat_id=OWNER_ID,
@@ -92,8 +138,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("1️⃣ FrozenTools", url="https://t.me/jsks"),
-            InlineKeyboardButton("2️⃣ Giveaway", url="https://t.me/js;₹js"),
+            InlineKeyboardButton("1️⃣ FrozenTools", url="https://t.me/FrozenTools"),
+            InlineKeyboardButton("2️⃣ Giveaway", url="https://t.me/+-kOlLYQkVAI3YmU1"),
         ],
         [
             InlineKeyboardButton("Joined ✅", callback_data="joined_check")
@@ -112,48 +158,36 @@ async def joined_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    joined_1 = await check_join(update, context, CHANNEL_1)
-    joined_2 = await check_join(update, context, CHANNEL_2)
-
-    if not (joined_1 and joined_2):
-        await query.message.reply_text(
-            "❗ Please Join our channel then tap on Joined ✅"
-        )
+    if not (await check_join(update, context, CHANNEL_1) and await check_join(update, context, CHANNEL_2)):
+        await query.message.reply_text("❗ Please Join our channel then tap on Joined ✅")
         return
 
     keyboard = ReplyKeyboardMarkup(
-        [
-            ["👤 Profile", "🎁 Refer & Earn"],
-            ["🎟 Withdraw Voucher", "💰 Balance"]
-        ],
+        [["👤 Profile", "🎁 Refer & Earn"],
+         ["🎟 Withdraw Voucher", "💰 Balance"]],
         resize_keyboard=True
     )
 
-    await query.message.reply_text(
-        "✅ Access Granted!",
-        reply_markup=keyboard
-    )
+    await query.message.reply_text("✅ Access Granted!", reply_markup=keyboard)
 
 # ========================
 # PROFILE
 # ========================
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = get_user(update.effective_user.id)
-
+    u = get_user(update.effective_user.id)
     await update.message.reply_text(
         f"👤 Profile Details\n\n"
-        f"ID: {user[0]}\n"
-        f"User: @{user[1]}\n"
-        f"Total Referrals: {user[3]}\n"
-        f"Join Date: {user[4]}"
+        f"ID: {u[0]}\n"
+        f"User: @{u[1]}\n"
+        f"Total Referrals: {u[3]}\n"
+        f"Join Date: {u[4]}"
     )
 
 # ========================
-# REFER & EARN
+# REFER
 # ========================
 async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     link = f"https://t.me/{context.bot.username}?start={update.effective_user.id}"
-
     await update.message.reply_text(
         "🎁 Referral Program\n\n"
         "Earn 1 Point for every friend who joins!\n\n"
@@ -164,27 +198,19 @@ async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # WITHDRAW
 # ========================
 async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = get_user(update.effective_user.id)
-
-    if user[2] < 2:
-        await update.message.reply_text(
-            "❌ Insufficient Points!\n"
-            "You need at least 2 points to withdraw."
-        )
+    u = get_user(update.effective_user.id)
+    if u[2] < 2:
+        await update.message.reply_text("❌ Insufficient Points!\nYou need at least 2 points to withdraw.")
         return
 
-    coupon = generate_coupon()
-
-    cur.execute(
-        "UPDATE users SET points = points - 2 WHERE user_id=?",
-        (user[0],)
-    )
+    code = generate_coupon()
+    cur.execute("UPDATE users SET points = points - 2 WHERE user_id=?", (u[0],))
     conn.commit()
 
     await update.message.reply_text(
-        "🎉 Withdrawal Successful!\n\n"
-        "Amount: ₹500\n\n"
-        f"Code: `{coupon}`\n\n"
+        f"🎉 Withdrawal Successful!\n\n"
+        f"Amount: ₹500\n\n"
+        f"Code: `{code}`\n\n"
         "Use this on the SHEIN checkout page.",
         parse_mode="Markdown"
     )
@@ -193,38 +219,58 @@ async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # BALANCE
 # ========================
 async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = get_user(update.effective_user.id)
-
+    u = get_user(update.effective_user.id)
     await update.message.reply_text(
-        "💳 Your Wallet\n\n"
-        f"Points balance: {user[2]}\n\n"
+        f"💳 Your Wallet\n\nPoints balance: {u[2]}\n\n"
         "• 2 Pts → ₹500\n"
         "• 5 Pts → ₹1000\n"
         "• 10 Pts → ₹2000"
     )
 
 # ========================
-# BROADCAST (OWNER ONLY)
+# OWNER ADD / DEDUCT
+# ========================
+async def add_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != OWNER_ID:
+        return
+    try:
+        pts, uid = int(context.args[0]), int(context.args[1])
+        cur.execute("UPDATE users SET points = points + ? WHERE user_id=?", (pts, uid))
+        conn.commit()
+        await update.message.reply_text(f"✅ Added {pts} points to User ID {uid}")
+    except:
+        await update.message.reply_text("❗ Usage: /add {points} {userid}")
+
+async def deduct_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != OWNER_ID:
+        return
+    try:
+        pts, uid = int(context.args[0]), int(context.args[1])
+        cur.execute("UPDATE users SET points = MAX(points - ?, 0) WHERE user_id=?", (pts, uid))
+        conn.commit()
+        await update.message.reply_text(f"✅ Deducted {pts} points from User ID {uid}")
+    except:
+        await update.message.reply_text("❗ Usage: /deduct {points} {userid}")
+
+# ========================
+# BROADCAST
 # ========================
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         return
 
     if not context.args:
-        await update.message.reply_text(
-            "❗ Usage:\n/broadcast Your message here"
-        )
+        await update.message.reply_text("❗ Usage:\n/broadcast Your message here")
         return
 
     message = " ".join(context.args)
-
     cur.execute("SELECT user_id FROM users")
     users = cur.fetchall()
 
     sent = 0
-    for uid in users:
+    for u in users:
         try:
-            await context.bot.send_message(uid[0], message)
+            await context.bot.send_message(u[0], message)
             sent += 1
         except:
             pass
@@ -237,6 +283,8 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("add", add_points))
+app.add_handler(CommandHandler("deduct", deduct_points))
 app.add_handler(CommandHandler("broadcast", broadcast))
 app.add_handler(CallbackQueryHandler(joined_check, pattern="joined_check"))
 
