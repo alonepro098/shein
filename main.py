@@ -26,7 +26,7 @@ BOT_TOKEN = "8061483201:AAH2qFwwJouLTlAm0ZFnuBvBRwfOc4RNt0Y"
 OWNER_ID = 5311223486
 
 CHANNEL_1 = "@frozentools"
-CHANNEL_2 = "https://t.me/+-kOlLYQkVAI3YmU1"
+CHANNEL_2 = "@frozentools"
 
 # ========================
 # DATABASE
